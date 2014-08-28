@@ -176,16 +176,18 @@ static void adreno_input_event(struct input_handle *handle, unsigned int type,
 
 	if (device->flags & KGSL_FLAG_WAKE_ON_TOUCH)
 		return;
+
 	/*
 	 * If the device is in nap, kick the idle timer to make sure that we
 	 * don't go into slumber before the first render. If the device is
 	 * already in slumber schedule the wake.
 	 */
-	 if (device->state == KGSL_STATE_NAP) {
-	 	/*
-	 	 * Set the wake on touch bit to keep from coming back here and
-	 	 * keeping the device in nap without rendering
-	 	 */
+
+	if (device->state == KGSL_STATE_NAP) {
+		/*
+		 * Set the wake on touch bit to keep from coming back here and
+		 * keeping the device in nap without rendering
+		 */
 
 		device->flags |= KGSL_FLAG_WAKE_ON_TOUCH;
 
