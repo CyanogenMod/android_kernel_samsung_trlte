@@ -1489,10 +1489,17 @@ static int adreno_of_get_pdata(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	/* get pm-qos-latency from target, set it to default if not found */
-	if (of_property_read_u32(pdev->dev.of_node, "qcom,pm-qos-latency",
-		&pdata->pm_qos_latency))
-		pdata->pm_qos_latency = 501;
+	/* get pm-qos-active-latency, set it to default if not found */
+	if (of_property_read_u32(pdev->dev.of_node,
+		"qcom,pm-qos-active-latency",
+		&pdata->pm_qos_active_latency))
+		pdata->pm_qos_active_latency = 501;
+
+	/* get pm-qos-wakeup-latency, set it to default if not found */
+	if (of_property_read_u32(pdev->dev.of_node,
+		"qcom,pm-qos-wakeup-latency",
+		&pdata->pm_qos_wakeup_latency))
+		pdata->pm_qos_wakeup_latency = 101;
 
 	if (of_property_read_u32(pdev->dev.of_node, "qcom,idle-timeout",
 		&pdata->idle_timeout))
@@ -1797,6 +1804,11 @@ static int _adreno_start(struct adreno_device *adreno_dev)
 	int status = -EINVAL;
 	unsigned int state = device->state;
 	unsigned int regulator_left_on = 0;
+	unsigned int pmqos_wakeup_vote = device->pwrctrl.pm_qos_wakeup_latency;
+	unsigned int pmqos_active_vote = device->pwrctrl.pm_qos_active_latency;
+
+	pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma,
+			pmqos_wakeup_vote);
 
 	kgsl_cffdump_open(device);
 
@@ -1860,6 +1872,10 @@ static int _adreno_start(struct adreno_device *adreno_dev)
 
 	set_bit(ADRENO_DEVICE_STARTED, &adreno_dev->priv);
 
+	if (pmqos_active_vote != pmqos_wakeup_vote)
+		pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma,
+				pmqos_active_vote);
+
 	return 0;
 
 error_rb_stop:
@@ -1874,6 +1890,10 @@ error_clk_off:
 	kgsl_pwrctrl_disable(device);
 	/* set the state back to original state */
 	kgsl_pwrctrl_set_state(device, state);
+
+	if (pmqos_active_vote != pmqos_wakeup_vote)
+		pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma,
+				pmqos_active_vote);
 
 	return status;
 }
