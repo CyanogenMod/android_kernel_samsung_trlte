@@ -127,7 +127,7 @@ exit:
 
 
 static int mdss_mdp_cmd_tearcheck_cfg(struct mdss_mdp_ctl *ctl,
-	struct mdss_mdp_mixer *mixer, bool enable)
+                                     struct mdss_mdp_mixer *mixer)
 {
 	struct mdss_mdp_pp_tear_check *te;
 	struct mdss_panel_info *pinfo;
@@ -1022,7 +1022,7 @@ static void mdss_mdp_cmd_stop_sub(struct mdss_mdp_ctl *ctl,
 
 	mdss_mdp_cmd_clk_off(ctx);
 	flush_work(&ctx->pp_done_work);
-	mdss_mdp_cmd_tearcheck_setup(ctl, false);
+	mdss_mdp_cmd_tearcheck_setup(ctl);
 
 	ctx->panel_power_state = panel_power_state;
 }
@@ -1116,7 +1116,7 @@ int mdss_mdp_cmd_start(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_cmd_restore(ctl);
 
 		/* Turn on the panel so that it can exit low power mode */
-		ret = mdss_mdp_cmd_panel_on(ctl);
+		ret = mdss_mdp_cmd_panel_on(ctl, sctl);
 		goto end;
 	}
 
