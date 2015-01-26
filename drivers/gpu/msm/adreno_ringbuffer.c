@@ -404,7 +404,7 @@ static int _ringbuffer_bootstrap_ucode(struct adreno_ringbuffer *rb,
 	}
 
 	/* idle device to validate bootstrap */
-	return adreno_idle(device);
+	return adreno_spin_idle(device);
 }
 
 /**
@@ -476,7 +476,7 @@ static int _ringbuffer_start_common(struct adreno_ringbuffer *rb)
 		return status;
 
 	/* idle device to validate ME INIT */
-	status = adreno_idle(device);
+	status = adreno_spin_idle(device);
 
 	if (status == 0)
 		rb->flags |= KGSL_FLAGS_STARTED;
@@ -1187,8 +1187,9 @@ void adreno_ringbuffer_set_constraint(struct kgsl_device *device,
 		constraint = adreno_ringbuffer_get_constraint(device, context);
 
 		/*
-		 * If a constraint is already set, set a new
-		 * constraint only if it is faster
+		 * If a constraint is already set, set a new constraint only
+		 * if it is faster.  If the requested constraint is the same
+		 * as the current one, update ownership and timestamp.
 		 */
 		if ((device->pwrctrl.constraint.type ==
 			KGSL_CONSTRAINT_NONE) || (constraint <
@@ -1199,14 +1200,21 @@ void adreno_ringbuffer_set_constraint(struct kgsl_device *device,
 					context->pwr_constraint.type;
 			device->pwrctrl.constraint.hint.
 					pwrlevel.level = constraint;
+			device->pwrctrl.constraint.owner_id = context->id;
+			device->pwrctrl.constraint.expires = jiffies +
+					device->pwrctrl.interval_timeout;
 			/* Trace the constraint being set by the driver */
 			trace_kgsl_constraint(device,
 					device->pwrctrl.constraint.type,
 					constraint, 1);
+		} else if ((device->pwrctrl.constraint.type ==
+				context->pwr_constraint.type) &&
+			(device->pwrctrl.constraint.hint.pwrlevel.level ==
+				constraint)) {
+			device->pwrctrl.constraint.owner_id = context->id;
+			device->pwrctrl.constraint.expires = jiffies +
+					device->pwrctrl.interval_timeout;
 		}
-
-		device->pwrctrl.constraint.expires = jiffies +
-			device->pwrctrl.interval_timeout;
 	}
 
 }
@@ -1347,16 +1355,18 @@ int adreno_ringbuffer_submitcmd(struct adreno_device *adreno_dev,
 	/* Set the constraints before adding to ringbuffer */
 	adreno_ringbuffer_set_constraint(device, cmdbatch);
 
+	/* CFF stuff executed only if CFF is enabled */
+	kgsl_cffdump_capture_ib_desc(device, context, ibdesc, numibs);
+
 	ret = adreno_ringbuffer_addcmds(&adreno_dev->ringbuffer,
 					drawctxt,
 					flags,
 					&link[0], (cmds - link),
 					cmdbatch->timestamp);
 
-	/* CFF stuff executed only if CFF is enabled */
-	kgsl_cffdump_capture_ib_desc(device, context, ibdesc, numibs);
-	kgsl_cff_core_idle(device);
-
+	kgsl_cffdump_regpoll(device,
+		adreno_getreg(adreno_dev, ADRENO_REG_RBBM_STATUS) << 2,
+		0x00000000, 0x80000000);
 done:
 	device->pwrctrl.irq_last = 0;
 	trace_kgsl_issueibcmds(device, context->id, cmdbatch,
