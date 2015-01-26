@@ -1953,7 +1953,7 @@ static int adreno_start(struct kgsl_device *device, int priority)
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 
 	/* default 501 will allow PC to happen, set it to 490 to prevent PC happening during adreno_start; */
-	pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma, 490);
+	//pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma, 490);
 
 	/* No priority (normal latency) call the core start function directly */
 	if (!priority)
@@ -1968,7 +1968,7 @@ static int adreno_start(struct kgsl_device *device, int priority)
 	flush_work(&adreno_dev->start_work);
 	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
-	pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma, device->pwrctrl.pm_qos_latency);
+	//pm_qos_update_request(&device->pwrctrl.pm_qos_req_dma, device->pwrctrl.pm_qos_latency);
 	return _status;
 }
 
@@ -2832,22 +2832,10 @@ int adreno_spin_idle(struct kgsl_device *device)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	unsigned long wait = jiffies + msecs_to_jiffies(ADRENO_IDLE_TIMEOUT);
-	int ret;
 
 	kgsl_cffdump_regpoll(device,
 		adreno_getreg(adreno_dev, ADRENO_REG_RBBM_STATUS) << 2,
 		0x00000000, 0x80000000);
-
-	/* Check if we are already idle before idling dispatcher */
-	if (adreno_isidle(device))
-		return 0;
-	/*
-	 * Wait for dispatcher to finish completing commands
-	 * already submitted
-	 */
-	ret = adreno_dispatcher_idle(adreno_dev);
-	if (ret)
-		return ret;
 
 	while (time_before(jiffies, wait)) {
 		/*
