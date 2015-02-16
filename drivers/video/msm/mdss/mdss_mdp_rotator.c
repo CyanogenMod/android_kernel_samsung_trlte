@@ -473,19 +473,21 @@ int mdss_mdp_rotator_setup(struct msm_fb_data_type *mfd,
 		list_add(&rot->list, &mdp5_data->rot_proc_list);
 	} else if (req->id & MDSS_MDP_ROT_SESSION_MASK) {
 		rot = mdss_mdp_rotator_session_get(req->id);
-
 		if (!rot) {
 			pr_err("rotator session=%x not found\n", req->id);
 			ret = -ENODEV;
 			goto rot_err;
 		}
-		if (rot->format != fmt->format)
-			format_changed = true;
+
 		if (work_pending(&rot->commit_work)) {
 			mutex_unlock(&rotator_lock);
 			flush_work(&rot->commit_work);
 			mutex_lock(&rotator_lock);
 		}
+
+		if (rot->format != fmt->format)
+			format_changed = true;
+
 	} else {
 		pr_err("invalid rotator session id=%x\n", req->id);
 		ret = -EINVAL;
@@ -588,6 +590,7 @@ static int mdss_mdp_rotator_finish(struct mdss_mdp_rotator_session *rot)
 			cancel_work_sync(&rot->commit_work);
 			mutex_lock(&rotator_lock);
 		}
+
 		mdss_mdp_rotator_busy_wait(rot);
 		list_del(&rot->head);
 	}

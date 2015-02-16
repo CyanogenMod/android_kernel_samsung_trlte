@@ -1378,16 +1378,23 @@ static inline int mdss_mdp_set_split_ctl(struct mdss_mdp_ctl *ctl,
 		struct mdss_mdp_ctl *split_ctl)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
+	struct mdss_overlay_private *mdp5_data = NULL;
+	bool mixer_swap = false;
 
 	if (!ctl || !split_ctl || !mdata)
 		return -ENODEV;
+
+	if (ctl->mfd) {
+		mdp5_data = mfd_to_mdp5_data(ctl->mfd);
+		mixer_swap = mdp5_data->mixer_swap;
+	}
 
 	/* setup split ctl mixer as right mixer of original ctl so that
 	 * original ctl can work the same way as dual pipe solution */
 	ctl->mixer_right = split_ctl->mixer_left;
 
 	if ((mdata->mdp_rev >= MDSS_MDP_HW_REV_103) && ctl->is_video_mode)
-		ctl->split_flush_en = true;
+		ctl->split_flush_en = !mixer_swap;
 
 	return 0;
 }
@@ -2016,14 +2023,20 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl, int power_state)
 
 	mdss_mdp_hist_intr_setup(&mdata->hist_intr, MDSS_IRQ_SUSPEND);
 
-	if (ctl->stop_fnc)
+	if (ctl->stop_fnc) {
 		ret = ctl->stop_fnc(ctl, power_state);
-	else
+		if (ctl->panel_data->panel_info.fbc.enabled)
+			mdss_mdp_ctl_fbc_enable(0, ctl->mixer_left,
+				&ctl->panel_data->panel_info);
+	} else {
 		pr_warn("no stop func for ctl=%d\n", ctl->num);
+	}
 
 	if (sctl && sctl->stop_fnc) {
 		ret = sctl->stop_fnc(sctl, power_state);
-		mdss_mdp_ctl_split_display_enable(0, ctl, sctl);
+		if (ctl->panel_data->panel_info.fbc.enabled)
+			mdss_mdp_ctl_fbc_enable(0, sctl->mixer_left,
+				&sctl->panel_data->panel_info);
 	}
 	if (ret) {
 		pr_warn("error powering off intf ctl=%d\n", ctl->num);
@@ -2034,6 +2047,9 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl, int power_state)
 		pr_debug("panel is not off, leaving ctl power on\n");
 		goto end;
 	}
+
+	if (sctl)
+		mdss_mdp_ctl_split_display_enable(0, ctl, sctl);
 
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_TOP, 0);
 	if (sctl)
