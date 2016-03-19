@@ -157,6 +157,7 @@ unsigned int freqTable[] = {
 struct spi_device *gDevSpi;
 struct class *vfsSpiDevClass;
 int gpio_irq;
+static int vfsspi_majorno = VFSSPI_MAJOR;
 
 static DECLARE_WAIT_QUEUE_HEAD(wq);
 static LIST_HEAD(deviceList);
@@ -166,6 +167,18 @@ static int dataToRead;
 
 int vfsspi_enable_irq(struct vfsspi_devData *vfsSpiDev)
 {
+#if defined(CONFIG_MACH_TRLTE_EUR)
+ 	unsigned long flags;
+ 
+ 	if (vfsSpiDev->drdy_irq_flag == DRDY_IRQ_ENABLE)
+ 		return -EINVAL;
+ 
+ 	spin_lock_irqsave(&vfsSpiDev->irq_lock,flags);
+ 	enable_irq(gpio_irq);
+ 	vfsSpiDev->drdy_irq_flag = DRDY_IRQ_ENABLE;
+ 	spin_unlock_irqrestore(&vfsSpiDev->irq_lock,flags);
+ 	pr_info("%s\n", __func__);
+#else
 	if (vfsSpiDev->drdy_irq_flag == DRDY_IRQ_ENABLE)
 		return -EINVAL;
 
@@ -175,11 +188,24 @@ int vfsspi_enable_irq(struct vfsspi_devData *vfsSpiDev)
 	spin_unlock(&vfsSpiDev->irq_lock);
 	pr_info("%s\n", __func__);
 
+#endif
 	return 0;
 }
 
 int vfsspi_disable_irq(struct vfsspi_devData *vfsSpiDev)
 {
+#if defined(CONFIG_MACH_TRLTE_EUR)
+ 	unsigned long flags;
+ 
+ 	if (vfsSpiDev->drdy_irq_flag == DRDY_IRQ_DISABLE)
+ 		return -EINVAL;
+ 
+ 	spin_lock_irqsave(&vfsSpiDev->irq_lock,flags);
+ 	disable_irq_nosync(gpio_irq);
+ 	vfsSpiDev->drdy_irq_flag = DRDY_IRQ_DISABLE;
+ 	spin_unlock_irqrestore(&vfsSpiDev->irq_lock,flags);
+ 	pr_info("%s\n", __func__);
+#else
 	if (vfsSpiDev->drdy_irq_flag == DRDY_IRQ_DISABLE)
 		return -EINVAL;
 
@@ -189,6 +215,7 @@ int vfsspi_disable_irq(struct vfsspi_devData *vfsSpiDev)
 	spin_unlock(&vfsSpiDev->irq_lock);
 	pr_info("%s\n", __func__);
 
+#endif
 	return 0;
 }
 
@@ -1590,7 +1617,7 @@ int vfsspi_probe(struct spi_device *spi)
 			mutex_lock(&deviceListMutex);
 
 			/* Create device node */
-			vfsSpiDev->devt = MKDEV(VFSSPI_MAJOR, 0);
+			vfsSpiDev->devt = MKDEV(vfsspi_majorno, 0);
 			dev =
 			    device_create(vfsSpiDevClass, &spi->dev,
 					  vfsSpiDev->devt, vfsSpiDev, "vfsspi");
@@ -1866,12 +1893,12 @@ static int __init vfsspi_init(void)
 	pr_info("%s\n", __func__);
 
 	/* register major number for character device */
-	status =
-	    register_chrdev(VFSSPI_MAJOR, "validity_fingerprint", &vfsspi_fops);
+	vfsspi_majorno =
+	    register_chrdev(0, "validity_fingerprint", &vfsspi_fops);
 
-	if (status < 0) {
+	if (vfsspi_majorno < 0) {
 		pr_err("%s register_chrdev failed\n", __func__);
-		return status;
+		return vfsspi_majorno;
 	}
 
 	vfsSpiDevClass = class_create(THIS_MODULE, "validity_fingerprint");
@@ -1879,7 +1906,7 @@ static int __init vfsspi_init(void)
 	if (IS_ERR(vfsSpiDevClass)) {
 		pr_err
 		    ("%s vfsspi_init: class_create() is failed\n", __func__);
-		unregister_chrdev(VFSSPI_MAJOR, vfsspi_spi.driver.name);
+		unregister_chrdev(vfsspi_majorno, vfsspi_spi.driver.name);
 		return PTR_ERR(vfsSpiDevClass);
 	}
 
@@ -1888,7 +1915,7 @@ static int __init vfsspi_init(void)
 	if (status < 0) {
 		pr_err("%s : register spi drv is failed\n", __func__);
 		class_destroy(vfsSpiDevClass);
-		unregister_chrdev(VFSSPI_MAJOR, vfsspi_spi.driver.name);
+		unregister_chrdev(vfsspi_majorno, vfsspi_spi.driver.name);
 		return status;
 	}
 	pr_info("%s init is successful\n", __func__);
@@ -1903,7 +1930,8 @@ static void __exit vfsspi_exit(void)
 	spi_unregister_driver(&vfsspi_spi);
 	class_destroy(vfsSpiDevClass);
 
-	unregister_chrdev(VFSSPI_MAJOR, vfsspi_spi.driver.name);
+	if (vfsspi_majorno >= 0)
+		unregister_chrdev(vfsspi_majorno, vfsspi_spi.driver.name);
 }
 
 module_init(vfsspi_init);
